@@ -480,8 +480,8 @@ class Player {
         
         // Apply velocity (scaled by deltaTime for consistent speed)
         const timeScale = deltaTime / 16;
-        this.x += this.vx * timeScale;
-        this.y += this.vy * timeScale;
+        this.x += this.vx * timeScale * 0.5;
+        this.y += this.vy * timeScale * 0.5;
         
         if (this.x < 0) this.x = 0;
         if (this.x + this.width > CANVAS_WIDTH) this.x = CANVAS_WIDTH - this.width;
@@ -7073,7 +7073,7 @@ class Game {
         this.levelDisplay = document.getElementById('levelDisplay');
         this.doubleJumpDisplay = document.getElementById('doubleJumpDisplay');
         this.messageDiv = document.getElementById('message');
-        this.lastTime = null;
+        this.lastTimestamp = 0;
         
         this.input = new InputHandler();
         this.particles = new ParticleSystem();
@@ -7117,7 +7117,7 @@ class Game {
         const startPos = this.levelManager.loadLevel(0);
         this.player = new Player(startPos.x, startPos.y);
         this.updateUI();
-        this.gameLoop();
+        requestAnimationFrame((t) => this.gameLoop(t));
     }
     
     updateUI() {
@@ -7875,23 +7875,24 @@ class Game {
         this.ctx.restore();
     }
     
-    gameLoop() {
-        const now = Date.now();
-        let deltaTime = 16;
-        if (this.lastTime) {
-            deltaTime = now - this.lastTime;
-            // Cap delta time to prevent huge jumps
-            if (deltaTime > 50) deltaTime = 50;
-            if (deltaTime < 8) deltaTime = 8;
+    gameLoop(timestamp) {
+        if (!this.lastTimestamp) {
+            this.lastTimestamp = timestamp;
         }
-        this.lastTime = now;
-        
-        this.update(deltaTime);
+
+        let elapsed = timestamp - this.lastTimestamp;
+        this.lastTimestamp = timestamp;
+
+        // Cap elapsed time to prevent huge jumps after tab switch
+        if (elapsed > 100) elapsed = 100;
+
+        this.update(elapsed);
+
         if (!this.paused) {
             this.draw();
         }
-        
-        requestAnimationFrame(() => this.gameLoop());
+
+        requestAnimationFrame((t) => this.gameLoop(t));
     }
 }
 

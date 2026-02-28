@@ -1172,6 +1172,8 @@
                     <button onclick="testLevel()">▶ Test</button>
                     <button onclick="saveLevel()">💾 Save</button>
                     <button onclick="loadMyLevel()">📂 Load</button>
+                    <button onclick="shareLevel()">📤 Share</button>
+                    <button onclick="importLevel()">📥 Import</button>
                 </div>
             </div>
         </div>
@@ -2572,6 +2574,55 @@
             storage.setItem('platformerCustomLevels', JSON.stringify(window.savedCustomLevels));
             
             alert('Level saved! You now have ' + window.savedCustomLevels.length + ' custom level(s)!');
+        }
+        
+        // Share/Import Level Functions
+        function shareLevel() {
+            if (!window.savedCustomLevels || window.savedCustomLevels.length === 0) {
+                alert('No levels to share! Create and save a level first.');
+                return;
+            }
+            
+            let msg = 'Enter level number to share:\n';
+            window.savedCustomLevels.forEach((lvl, i) => {
+                msg += (i+1) + '. ' + (lvl.name || 'Level ' + (i+1)) + '\n';
+            });
+            const num = prompt(msg);
+            const idx = parseInt(num) - 1;
+            
+            if (idx >= 0 && idx < window.savedCustomLevels.length) {
+                const lvl = window.savedCustomLevels[idx];
+                try {
+                    const jsonStr = JSON.stringify(lvl);
+                    const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
+                    prompt('Copy this code to share your level:', encoded);
+                } catch(e) {
+                    alert('Error creating share code!');
+                }
+            }
+        }
+        
+        function importLevel() {
+            const code = prompt('Paste a level code to import:');
+            if (!code) return;
+            
+            try {
+                const jsonStr = decodeURIComponent(escape(atob(code)));
+                const lvl = JSON.parse(jsonStr);
+                
+                if (lvl.name && lvl.platforms && lvl.goal) {
+                    if (!window.savedCustomLevels) {
+                        window.savedCustomLevels = [];
+                    }
+                    window.savedCustomLevels.push(lvl);
+                    storage.setItem('platformerCustomLevels', JSON.stringify(window.savedCustomLevels));
+                    alert('Level "' + (lvl.name || 'Imported') + '" imported successfully!');
+                } else {
+                    alert('Invalid level code!');
+                }
+            } catch(e) {
+                alert('Invalid level code! Error: ' + e.message);
+            }
         }
         
         updateGemDisplay();
