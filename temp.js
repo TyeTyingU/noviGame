@@ -1,0 +1,1640 @@
+
+        // Safe localStorage wrapper for private browsing
+        const storage = {
+            getItem: function(key) {
+                try {
+                    return localStorage.getItem(key);
+                } catch(e) {
+                    return null;
+                }
+            },
+            setItem: function(key, value) {
+                try {
+                    localStorage.setItem(key, value);
+                } catch(e) {
+                    console.warn('Storage unavailable:', e);
+                }
+            },
+            removeItem: function(key) {
+                try {
+                    localStorage.removeItem(key);
+                } catch(e) {}
+            }
+        };
+        
+        // Load saved custom levels from localStorage
+        const savedLevelsData = storage.getItem('platformerCustomLevels');
+        if (savedLevelsData) {
+            try {
+                window.savedCustomLevels = JSON.parse(savedLevelsData);
+            } catch(e) {
+                console.warn('Failed to load saved levels:', e);
+                window.savedCustomLevels = [];
+            }
+        } else {
+            window.savedCustomLevels = [];
+        }
+        
+        function updateGemDisplay() {
+            document.getElementById('gemCount').textContent = playerGems.toLocaleString();
+        }
+        
+        function updateCoinDisplay() {
+            document.getElementById('coinCount').textContent = playerCoins.toLocaleString();
+        }
+        
+        function openStore() {
+            document.getElementById('storeModal').style.display = 'block';
+            renderSkins();
+            renderHats();
+            
+            if (inSecretRoom) {
+                document.getElementById('secretCodeSection').style.display = 'block';
+            } else {
+                document.getElementById('secretCodeSection').style.display = 'none';
+            }
+        }
+        
+        function closeStore() {
+            document.getElementById('storeModal').style.display = 'none';
+            if (currentUser) {
+                saveUserProgress();
+            }
+        }
+        
+        function closeLevelPicker() {
+            document.getElementById('levelPickerModal').style.display = 'none';
+        }
+        
+        function openSettings() {
+            document.getElementById('settingsModal').style.display = 'block';
+        }
+        
+        function closeSettings() {
+            document.getElementById('settingsModal').style.display = 'none';
+        }
+        
+        // Achievements System
+        const achievements = [
+            { id: 'first_win', name: 'First Victory', desc: 'Complete your first level', icon: '🎉', required: 1, type: 'levels_completed' },
+            { id: 'easy_master', name: 'Easy Master', desc: 'Complete all Easy levels', icon: '😊', required: 26, type: 'levels_completed' },
+            { id: 'hard_survivor', name: 'Hard Survivor', desc: 'Complete all Hard levels', icon: '😰', required: 20, type: 'hard_completed' },
+            { id: 'insane_champion', name: 'Insane Champion', desc: 'Complete all Insane levels', icon: '💀', required: 24, type: 'insane_completed' },
+            { id: 'extreme_god', name: 'Extreme God', desc: 'Complete all Extreme levels', icon: '🔥', required: 25, type: 'extreme_completed' },
+            { id: 'gem_collector_10', name: 'Gem Collector', desc: 'Collect 10 gems', icon: '💎', required: 10, type: 'gems' },
+            { id: 'gem_collector_50', name: 'Gem Hoarder', desc: 'Collect 50 gems', icon: '💎', required: 50, type: 'gems' },
+            { id: 'gem_collector_100', name: 'Gem Master', desc: 'Collect 100 gems', icon: '💎', required: 100, type: 'gems' },
+            { id: 'gem_collector_250', name: 'Gem Legend', desc: 'Collect 250 gems', icon: '💎', required: 250, type: 'gems' },
+            { id: 'gem_collector_500', name: 'Gem Tycoon', desc: 'Collect 500 gems', icon: '💎', required: 500, type: 'gems' },
+            { id: 'coin_lover', name: 'Coin Lover', desc: 'Collect 100 coins', icon: '🪙', required: 100, type: 'coins' },
+            { id: 'coin_king', name: 'Coin King', desc: 'Collect 500 coins', icon: '🪙', required: 500, type: 'coins' },
+            { id: 'coin_emperor', name: 'Coin Emperor', desc: 'Collect 1000 coins', icon: '🪙', required: 1000, type: 'coins' },
+            { id: 'no_damage', name: 'Perfect Run', desc: 'Complete a level without taking damage', icon: '🛡️', required: 1, type: 'no_damage' },
+            { id: 'no_damage_5', name: 'Flawless', desc: 'Complete 5 levels without taking damage', icon: '🛡️', required: 5, type: 'no_damage' },
+            { id: 'speedrunner', name: 'Speedrunner', desc: 'Complete a level in under 15 seconds', icon: '⚡', required: 1, type: 'speedrun' },
+            { id: 'speedrunner_5', name: 'Lightning Fast', desc: 'Complete 5 levels in under 15 seconds', icon: '⚡', required: 5, type: 'speedrun' },
+            { id: 'jumper', name: 'High Jumper', desc: 'Use 50 double jumps', icon: '🦘', required: 50, type: 'double_jumps' },
+            { id: 'jumper_100', name: 'Bunny Hop', desc: 'Use 100 double jumps', icon: '🦘', required: 100, type: 'double_jumps' },
+            { id: 'jumper_250', name: 'Kangaroo', desc: 'Use 250 double jumps', icon: '🦘', required: 250, type: 'double_jumps' },
+            { id: 'fall_down', name: 'Graceful Fall', desc: 'Fall 10 times', icon: '💫', required: 10, type: 'deaths' },
+            { id: 'fall_down_50', name: 'Falling Star', desc: 'Fall 50 times', icon: '💫', required: 50, type: 'deaths' },
+            { id: 'fall_down_100', name: 'Crash Test Dummy', desc: 'Fall 100 times', icon: '💫', required: 100, type: 'deaths' },
+            { id: 'creator', name: 'Level Creator', desc: 'Create your first level', icon: '🎮', required: 1, type: 'levels_created' },
+            { id: 'creator_5', name: 'Prolific Creator', desc: 'Create 5 levels', icon: '🎮', required: 5, type: 'levels_created' },
+            { id: 'tester', name: 'Dedicated Tester', desc: 'Test 5 custom levels', icon: '🔧', required: 5, type: 'levels_tested' },
+            { id: 'tester_10', name: 'QA Expert', desc: 'Test 10 custom levels', icon: '🔧', required: 10, type: 'levels_tested' },
+            { id: 'portal_user', name: 'Portal User', desc: 'Use portal warp 10 times', icon: '🔮', required: 10, type: 'portals' },
+            { id: 'portal_user_50', name: 'Portal Master', desc: 'Use portal warp 50 times', icon: '🔮', required: 50, type: 'portals' },
+            { id: 'rewinder', name: 'Time Manipulator', desc: 'Use time rewind 10 times', icon: '⏪', required: 10, type: 'rewinds' },
+            { id: 'rewinder_50', name: 'Chronos', desc: 'Use time rewind 50 times', icon: '⏪', required: 50, type: 'rewinds' },
+            { id: 'dodger', name: 'Spike Dodger', desc: 'Dodge 100 spikes', icon: '⚠️', required: 100, type: 'spikes_dodged' },
+            { id: 'dodger_500', name: 'Ninja', desc: 'Dodge 500 spikes', icon: '⚠️', required: 500, type: 'spikes_dodged' },
+            { id: 'dodger_1000', name: 'Ghost', desc: 'Dodge 1000 spikes', icon: '⚠️', required: 1000, type: 'spikes_dodged' },
+            { id: 'one_life_challenge', name: 'One Life Warrior', desc: 'Complete the one life challenge', icon: '💀', required: 1, type: 'one_life' },
+            { id: 'wall_jump', name: 'Wall Climber', desc: 'Wall jump 25 times', icon: '🧗', required: 25, type: 'wall_jumps' },
+            { id: 'wall_jump_100', name: 'Spider Monkey', desc: 'Wall jump 100 times', icon: '🧗', required: 100, type: 'wall_jumps' },
+            { id: 'dash_master', name: 'Dash Master', desc: 'Dash 25 times', icon: '💨', required: 25, type: 'dashes' },
+            { id: 'dash_master_100', name: 'Speed Demon', desc: 'Dash 100 times', icon: '💨', required: 100, type: 'dashes' },
+            { id: 'platform_ridden', name: 'Platform Rider', desc: 'Ride moving platforms 50 times', icon: '🎢', required: 50, type: 'platforms_ridden' },
+            { id: 'early_riser', name: 'Early Riser', desc: 'Play the game for the first time', icon: '🌅', required: 1, type: 'games_played' },
+            { id: 'veteran', name: 'Veteran', desc: 'Play the game 50 times', icon: '🎖️', required: 50, type: 'games_played' },
+            { id: 'dedicated', name: 'Dedicated Player', desc: 'Play the game 100 times', icon: '🏅', required: 100, type: 'games_played' },
+            { id: 'combo_5', name: 'Combo Starter', desc: 'Get a 5x combo', icon: '🔥', required: 5, type: 'max_combo' },
+            { id: 'combo_10', name: 'On Fire', desc: 'Get a 10x combo', icon: '🔥', required: 10, type: 'max_combo' },
+            { id: 'secret_finder', name: 'Secret Finder', desc: 'Find 3 secret platforms', icon: '🤫', required: 3, type: 'secrets_found' }
+        ];
+        
+        let playerAchievements = {
+            levels_completed: 0,
+            hard_completed: 0,
+            insane_completed: 0,
+            extreme_completed: 0,
+            gems: 0,
+            coins: 0,
+            no_damage: 0,
+            speedrun: 0,
+            double_jumps: 0,
+            deaths: 0,
+            levels_created: 0,
+            levels_tested: 0,
+            portals: 0,
+            rewinds: 0,
+            spikes_dodged: 0,
+            one_life: 0,
+            wall_jumps: 0,
+            dashes: 0,
+            platforms_ridden: 0,
+            games_played: 0,
+            max_combo: 0,
+            secrets_found: 0
+        };
+        
+        function checkAchievements() {
+            let newUnlocked = [];
+            achievements.forEach(ach => {
+                const key = ach.type;
+                if (playerAchievements[key] >= ach.required && !localStorage.getItem('achievement_' + ach.id)) {
+                    localStorage.setItem('achievement_' + ach.id, 'true');
+                    newUnlocked.push(ach);
+                }
+            });
+            if (newUnlocked.length > 0) {
+                newUnlocked.forEach(ach => {
+                    showAchievementToast(ach);
+                });
+            }
+        }
+        
+        function showAchievementToast(achievement) {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: linear-gradient(135deg, #fbbf24, #d97706);
+                color: white;
+                padding: 15px 25px;
+                border-radius: 10px;
+                font-weight: bold;
+                z-index: 1000;
+                animation: slideIn 0.5s, fadeOut 0.5s 3s forwards;
+                box-shadow: 0 4px 20px rgba(251, 191, 36, 0.5);
+            `;
+            toast.innerHTML = `🏆 Unlocked: ${achievement.name}`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3500);
+        }
+        
+        function openAchievements() {
+            document.getElementById('settingsModal').style.display = 'none';
+            renderAchievements();
+            document.getElementById('achievementsModal').style.display = 'block';
+        }
+        
+        function closeAchievements() {
+            document.getElementById('achievementsModal').style.display = 'none';
+        }
+        
+        function renderAchievements() {
+            const grid = document.getElementById('achievementsGrid');
+            grid.innerHTML = '';
+            
+            achievements.forEach(ach => {
+                const unlocked = localStorage.getItem('achievement_' + ach.id) === 'true';
+                const progress = playerAchievements[ach.type] || 0;
+                
+                const div = document.createElement('div');
+                div.className = `achievement ${unlocked ? 'unlocked' : 'locked'}`;
+                div.innerHTML = `
+                    <div class="achievement-icon">${ach.icon}</div>
+                    <div class="achievement-name">${ach.name}</div>
+                    <div class="achievement-desc">${ach.desc}</div>
+                    ${!unlocked ? `<div class="achievement-progress">${progress}/${ach.required}</div>` : ''}
+                `;
+                grid.appendChild(div);
+            });
+        }
+        
+        function updateAchievementProgress(type, amount) {
+            if (playerAchievements[type] !== undefined) {
+                playerAchievements[type] += amount;
+                checkAchievements();
+            }
+        }
+        
+        function selectDifficulty(difficulty) {
+            document.getElementById('levelPickerModal').style.display = 'none';
+            
+            if (window.game) {
+                window.game.isTestingCustom = false;
+                window.game.customLevelName = '';
+                window.game.levelManager.currentLevel = 0;
+                if (difficulty === 'easy') {
+                    window.game.levelManager.loadLevel(0, false, false, false);
+                    window.game.player.reset(50, 900);
+                    window.game.updateUI();
+                    window.game.showMessage('😊 EASY MODE: Levels 1-26', 3000);
+                } else if (difficulty === 'hard') {
+                    window.game.levelManager.loadLevel(0, true, false, false);
+                    window.game.player.reset(50, 900);
+                    window.game.updateUI();
+                    window.game.showMessage('😰 HARD MODE: Levels 1-20', 3000);
+                } else if (difficulty === 'insane') {
+                    window.game.levelManager.loadLevel(0, true, true, false);
+                    window.game.player.reset(50, 900);
+                    window.game.updateUI();
+                    window.game.showMessage('💀 INSANE MODE: Levels 1-24', 3000);
+                } else if (difficulty === 'extreme') {
+                    window.game.levelManager.loadLevel(0, true, true, true);
+                    window.game.player.reset(50, 900);
+                    window.game.updateUI();
+                    window.game.showMessage('🔥 EXTREME MODE: Levels 1-25', 3000);
+                }
+            }
+        }
+        
+        function renderSkins() {
+            const grid = document.getElementById('skinGrid');
+            grid.innerHTML = '';
+            
+            for (const [key, skin] of Object.entries(SKINS)) {
+                const card = document.createElement('div');
+                card.className = 'skin-card';
+                
+                if (ownedSkins.includes(key)) {
+                    card.classList.add('owned');
+                }
+                if (currentSkin === key) {
+                    card.classList.add('selected');
+                }
+                
+                let previewStyle = '';
+                if (skin.gradient) {
+                    if (key === 'rainbow') {
+                        previewStyle = 'background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);';
+                    } else {
+                        previewStyle = `background: linear-gradient(135deg, ${skin.gradient[0]}, ${skin.gradient[1]});`;
+                    }
+                } else {
+                    previewStyle = `background: ${skin.color};`;
+                }
+                
+                let buttonHtml = '';
+                if (ownedSkins.includes(key)) {
+                    if (currentSkin === key) {
+                        buttonHtml = '<span class="skin-owned">Equipped</span>';
+                    } else {
+                        buttonHtml = '<button class="buy-btn" onclick="equipSkin(\'' + key + '\')">Equip</button>';
+                    }
+                } else {
+                    buttonHtml = '<button class="buy-btn" onclick="buySkin(\'' + key + '\')">Buy</button>';
+                }
+                
+                card.innerHTML = `
+                    <div class="skin-preview" style="${previewStyle}"></div>
+                    <div class="skin-name">${skin.name}</div>
+                    ${ownedSkins.includes(key) ? '<span class="skin-owned">Owned</span>' : '<div class="skin-price">' + skin.price + ' 💎</div>'}
+                    ${buttonHtml}
+                `;
+                
+                grid.appendChild(card);
+            }
+        }
+        
+        function renderHats() {
+            const grid = document.getElementById('hatGrid');
+            grid.innerHTML = '';
+            
+            for (const [key, hat] of Object.entries(HATS)) {
+                const card = document.createElement('div');
+                card.className = 'hat-card';
+                
+                if (ownedHats.includes(key)) {
+                    card.classList.add('owned');
+                }
+                if (currentHat === key) {
+                    card.classList.add('selected');
+                }
+                
+                let buttonHtml = '';
+                if (ownedHats.includes(key)) {
+                    if (currentHat === key) {
+                        buttonHtml = '<span class="skin-owned">Equipped</span>';
+                    } else {
+                        buttonHtml = '<button class="buy-btn" onclick="equipHat(\'' + key + '\')">Equip</button>';
+                    }
+                } else {
+                    buttonHtml = '<button class="buy-btn" onclick="buyHat(\'' + key + '\')">Buy</button>';
+                }
+                
+                card.innerHTML = `
+                    <div class="hat-preview">${hat.emoji}</div>
+                    <div class="hat-name">${hat.name}</div>
+                    ${ownedHats.includes(key) ? '<span class="skin-owned">Owned</span>' : '<div class="hat-price">' + hat.price + ' 💎</div>'}
+                    ${buttonHtml}
+                `;
+                
+                grid.appendChild(card);
+            }
+        }
+        
+        function buySkin(skinKey) {
+            const skin = SKINS[skinKey];
+            if (playerGems >= skin.price) {
+                playerGems -= skin.price;
+                ownedSkins.push(skinKey);
+                updateGemDisplay();
+                renderSkins();
+                if (currentUser) saveUserProgress();
+            } else {
+                alert('Not enough gems! Buy more from the store below.');
+            }
+        }
+        
+        function equipSkin(skinKey) {
+            if (ownedSkins.includes(skinKey)) {
+                currentSkin = skinKey;
+                renderSkins();
+            }
+        }
+        
+        function buyHat(hatKey) {
+            const hat = HATS[hatKey];
+            if (playerGems >= hat.price) {
+                playerGems -= hat.price;
+                ownedHats.push(hatKey);
+                updateGemDisplay();
+                renderHats();
+                if (currentUser) saveUserProgress();
+            } else {
+                alert('Not enough gems! Buy more from the store below.');
+            }
+        }
+        
+        function equipHat(hatKey) {
+            if (ownedHats.includes(hatKey)) {
+                currentHat = hatKey;
+                renderHats();
+            }
+        }
+        
+        function redeemCode() {
+            const codeInput = document.getElementById('codeInput');
+            const code = codeInput.value.toLowerCase().trim();
+            
+            if (usedCodes.includes(code)) {
+                alert('This code has already been used!');
+                codeInput.value = '';
+                return;
+            }
+            
+            if (code === 'dotgame2026') {
+                usedCodes.push(code);
+                playerGems += 20;
+                updateGemDisplay();
+                alert('🎉 Code redeemed! +20 Gems!');
+            } else if (code === 'upupdowndown') {
+                usedCodes.push(code);
+                playerGems += 500;
+                updateGemDisplay();
+                alert('⭐ KONAMI CODE! +500 Gems!');
+            } else if (code === 'jumpmaster') {
+                usedCodes.push(code);
+                playerGems += 100;
+                updateGemDisplay();
+                alert('🏆 Jump Master! +100 Gems!');
+            } else if (code === 'firstgem') {
+                usedCodes.push(code);
+                playerGems += 50;
+                updateGemDisplay();
+                alert('🎮 First gems! +50 Gems!');
+            } else if (code === 'bbgzeinbbgzeinerzeins17381738') {
+                usedCodes.push(code);
+                playerGems += 100;
+                updateGemDisplay();
+                secretRoomUnlocked = true;
+                inSecretRoom = true;
+                alert('🚪 SECRET ROOM UNLOCKED! Use the code section in the secret room!');
+            } else {
+                alert('Invalid code!');
+            }
+            codeInput.value = '';
+            if (currentUser) saveUserProgress();
+        }
+        
+        function redeemSecretCode() {
+            const codeInput = document.getElementById('secretCodeInput');
+            const code = codeInput.value.toLowerCase().trim();
+            
+            if (code === 'iaintluckyboywth') {
+                canDash = true;
+                playerGems += 500;
+                updateGemDisplay();
+                alert('⚡ DASH ABILITY UNLOCKED!\n\nLeft Click + F to dash!\n5 second cooldown!\n\n+500 Gems!');
+                closeStore();
+                if (typeof window.game !== 'undefined') {
+                    window.game.loadUltimateLevel();
+                }
+            } else {
+                alert('Invalid secret code!');
+            }
+            codeInput.value = '';
+        }
+        
+        function updateControls() {
+            const controls = document.getElementById('controls');
+            if (canDash) {
+                controls.innerHTML = '<strong>Move:</strong> A/D or Arrow Left/Right | <strong>Jump:</strong> W, Space, or Arrow Up | <strong>Dash:</strong> Left Click + F | <strong>Double Jump:</strong> Hold Right Mouse + Jump';
+            } else {
+                controls.innerHTML = '<strong>Move:</strong> A/D or Arrow Left/Right | <strong>Jump:</strong> W, Space, or Arrow Up | <strong>Double Jump:</strong> Hold Right Mouse + Jump';
+            }
+        }
+        
+        function buyGems(amount, price) {
+            alert('This would connect to payment processor for $' + price + ' for ' + amount + ' gems.\n\nFor demo purposes, adding ' + amount + ' gems for free!');
+            playerGems += amount;
+            updateGemDisplay();
+            if (currentUser) saveUserProgress();
+        }
+        
+        document.getElementById('storeBtn').addEventListener('click', openStore);
+        document.getElementById('skinBtn').addEventListener('click', openStore);
+        document.getElementById('codeBtn').addEventListener('click', openStore);
+        
+        document.getElementById('codeInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                redeemCode();
+            }
+        });
+        
+        // Music System
+        let audioContext = null;
+        let musicPlaying = false;
+        let musicPaused = false;
+        let musicInterval = null;
+        
+        function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        }
+        
+        function createAmbientTone(frequency, duration, volume = 0.1) {
+            if (!audioContext || !musicPlaying || musicPaused) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = frequency;
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(volume, audioContext.currentTime + 0.5);
+            gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+        }
+        
+        function playAmbientMusic() {
+            if (!musicPlaying || musicPaused) return;
+            
+            const notes = [
+                196.00,
+                220.00,
+                246.94,
+                261.63,
+                293.66,
+                329.63,
+                349.23,
+                392.00,
+                440.00,
+                493.88,
+            ];
+            
+            const baseNote = notes[Math.floor(Math.random() * notes.length)];
+            const chord = [baseNote, baseNote * 1.5, baseNote * 2];
+            
+            chord.forEach((freq, i) => {
+                setTimeout(() => {
+                    if (musicPlaying && !musicPaused) {
+                        createAmbientTone(freq, 4, 0.05);
+                    }
+                }, i * 200);
+            });
+            
+            if (musicPlaying && !musicPaused) {
+                musicInterval = setTimeout(playAmbientMusic, 3000 + Math.random() * 2000);
+            }
+        }
+        
+        function toggleMusic() {
+            initAudio();
+            
+            if (musicPlaying && !musicPaused) {
+                // Pause
+                musicPaused = true;
+                if (musicInterval) {
+                    clearTimeout(musicInterval);
+                    musicInterval = null;
+                }
+                document.getElementById('musicBtn').textContent = '▶ Play';
+                document.getElementById('musicBtn').classList.remove('playing');
+            } else {
+                // Resume or Start
+                if (!musicPlaying) {
+                    musicPlaying = true;
+                }
+                musicPaused = false;
+                document.getElementById('musicBtn').textContent = '⏸ Pause';
+                document.getElementById('musicBtn').classList.add('playing');
+                playAmbientMusic();
+            }
+        }
+        
+        document.getElementById('musicBtn').addEventListener('click', toggleMusic);
+        
+        // Level Maker System
+        let levelMakerOpen = false;
+        let currentTool = 'platform';
+        let editorPlatforms = [];
+        let editorSpikes = [];
+        let editorGoal = null;
+        let editorPlayerStart = { x: 50, y: 500 };
+        let editorDecorations = [];
+        let editorSpeedRings = [];
+        let editorJumpRings = [];
+        let editorGravityRings = [];
+        let editorInvisiblePlatforms = [];
+        let editorCrumblingPlatforms = [];
+        let editorDashPads = [];
+        let editorMovingSpikes = [];
+        let editorSwingingAxes = [];
+        let editorLasers = [];
+        let editorShields = [];
+        let editorMagnets = [];
+        let editorCoins = [];
+        let editorKeys = [];
+        let editorSlowMotionZones = [];
+        let editorColorCubes = [];
+        let testMode = false;
+        let customLevelBeaten = false;
+        window.customLevelBeaten = customLevelBeaten;
+        let savedCustomLevel = null;
+        let gamePausedForEditor = false;
+        
+        document.getElementById('levelMakerBtn').addEventListener('click', openLevelMaker);
+        
+        document.getElementById('btnNewLevel').addEventListener('click', function() {
+            editorPlatforms = [];
+            editorSpikes = [];
+            editorGoal = null;
+            editorDecorations = [];
+            editorPlayerStart = { x: 50, y: 500 };
+            customLevelBeaten = false;
+            savedCustomLevel = null;
+            renderEditor();
+        });
+        
+        document.getElementById('playCustomBtn').addEventListener('click', function() {
+            if (window.savedCustomLevels && window.savedCustomLevels.length > 0) {
+                if (window.savedCustomLevels.length === 1) {
+                    if (window.game) {
+                        window.game.loadCustomLevel(window.savedCustomLevels[0]);
+                    }
+                } else {
+                    let msg = 'Select a level to play:\n';
+                    window.savedCustomLevels.forEach((lvl, i) => {
+                        msg += (i+1) + '. ' + (lvl.name || 'Level ' + (i+1)) + '\n';
+                    });
+                    msg += '\nEnter number:';
+                    const choice = prompt(msg);
+                    const idx = parseInt(choice) - 1;
+                    if (idx >= 0 && idx < window.savedCustomLevels.length) {
+                        if (window.game) {
+                            window.game.loadCustomLevel(window.savedCustomLevels[idx]);
+                        }
+                    } else {
+                        alert('Invalid selection!');
+                    }
+                }
+            } else {
+                alert('No custom levels saved yet! Create and beat a level first.');
+            }
+        });
+        
+        document.getElementById('oneLifeBtn').addEventListener('click', function() {
+            if (confirm('💀 ONE LIFE CHALLENGE 💀\n\nBeat ALL levels without dying ONCE!\n\nAre you ready?')) {
+                if (window.game) {
+                    document.getElementById('oneLifeBtn').classList.add('active');
+                    window.game.startOneLifeChallenge();
+                }
+            }
+        });
+        
+        document.getElementById('levelPickerBtn').addEventListener('click', function() {
+            document.getElementById('levelPickerModal').style.display = 'block';
+        });
+        
+        document.getElementById('settingsBtn').addEventListener('click', function() {
+            document.getElementById('settingsModal').style.display = 'block';
+        });
+        
+        function openLevelMaker() {
+            document.getElementById('levelMakerPanel').style.display = 'block';
+            levelMakerOpen = true;
+            editorPlatforms = [];
+            editorSpikes = [];
+            editorGoal = null;
+            editorDecorations = [];
+            editorPlayerStart = { x: 50, y: 500 };
+            editorSpeedRings = [];
+            editorJumpRings = [];
+            editorGravityRings = [];
+            editorInvisiblePlatforms = [];
+            editorCrumblingPlatforms = [];
+            editorDashPads = [];
+            editorMovingSpikes = [];
+            editorSwingingAxes = [];
+            editorLasers = [];
+            editorShields = [];
+            editorMagnets = [];
+            editorCoins = [];
+            editorKeys = [];
+            editorSlowMotionZones = [];
+            editorColorCubes = [];
+            testMode = false;
+            customLevelBeaten = false;
+            window.customLevelBeaten = false;
+            
+            if (window.game) {
+                window.game.pause();
+                gamePausedForEditor = true;
+            }
+            
+            renderEditor();
+        }
+        
+        function openLevelMakerAfterWin() {
+            document.getElementById('levelMakerPanel').style.display = 'block';
+            levelMakerOpen = true;
+            testMode = false;
+            customLevelBeaten = true;
+            window.customLevelBeaten = true;
+            
+            if (window.game) {
+                window.game.pause();
+                gamePausedForEditor = true;
+            }
+            
+            alert('🎉 Congratulations! You can now publish your level!');
+            renderEditor();
+        }
+        
+        function returnToEditor() {
+            if (window.game) {
+                window.game.pause();
+                window.game.isTestingCustom = false;
+            }
+            gamePausedForEditor = true;
+            testMode = false;
+            document.getElementById('levelMakerPanel').style.display = 'block';
+            levelMakerOpen = true;
+            renderEditor();
+        }
+        
+        window.returnToEditor = returnToEditor;
+        
+        window.openLevelMakerAfterWin = openLevelMakerAfterWin;
+        
+        function closeLevelMaker(keepPaused = false) {
+            document.getElementById('levelMakerPanel').style.display = 'none';
+            levelMakerOpen = false;
+            testMode = false;
+            
+            if (window.game && gamePausedForEditor && !keepPaused) {
+                window.game.resume();
+                gamePausedForEditor = false;
+            }
+        }
+        
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && levelMakerOpen) {
+                closeLevelMaker();
+            }
+            if (e.key === 'Escape') {
+                const settingsModal = document.getElementById('settingsModal');
+                const achievementsModal = document.getElementById('achievementsModal');
+                if (settingsModal && settingsModal.style.display === 'block') {
+                    closeSettings();
+                }
+                if (achievementsModal && achievementsModal.style.display === 'block') {
+                    closeAchievements();
+                }
+            }
+        });
+        
+        function selectTool(tool) {
+            currentTool = tool;
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            
+            const toolMap = {
+                'platform': 'toolPlatform',
+                'spike': 'toolSpike',
+                'goal': 'toolGoal',
+                'player': 'toolPlayer',
+                'decor': 'toolDecor',
+                'delete': 'toolDelete',
+                'speedRing': 'toolSpeedRing',
+                'jumpRing': 'toolJumpRing',
+                'gravityRing': 'toolGravityRing',
+                'invisiblePlatform': 'toolInvisiblePlatform',
+                'crumblingPlatform': 'toolCrumblingPlatform',
+                'dashPad': 'toolDashPad',
+                'movingSpike': 'toolMovingSpike',
+                'swingingAxe': 'toolSwingingAxe',
+                'laser': 'toolLaser',
+                'shield': 'toolShield',
+                'magnet': 'toolMagnet',
+                'coin': 'toolCoin',
+                'key': 'toolKey',
+                'slowMotionZone': 'toolSlowMotionZone',
+                'colorCube': 'toolColorCube'
+            };
+            
+            if (toolMap[tool]) {
+                document.getElementById(toolMap[tool]).classList.add('active');
+            }
+            
+            const platMoving = document.getElementById('platMoving');
+            const platSpeed = document.getElementById('platSpeed');
+            const platRange = document.getElementById('platRange');
+            const platVertical = document.getElementById('platVertical');
+            
+            if (tool === 'platform') {
+                platMoving.disabled = false;
+                platSpeed.disabled = !platMoving.checked;
+                platRange.disabled = !platMoving.checked;
+                platVertical.disabled = !platMoving.checked;
+            } else {
+                platMoving.disabled = true;
+                platSpeed.disabled = true;
+                platRange.disabled = true;
+                platVertical.disabled = true;
+            }
+        }
+        
+        function updateToolSettings() {
+            const platMoving = document.getElementById('platMoving');
+            const platSpeed = document.getElementById('platSpeed');
+            const platRange = document.getElementById('platRange');
+            const platVertical = document.getElementById('platVertical');
+            
+            if (currentTool === 'platform') {
+                platSpeed.disabled = !platMoving.checked;
+                platRange.disabled = !platMoving.checked;
+                platVertical.disabled = !platMoving.checked;
+            }
+        }
+        
+        document.getElementById('platMoving').addEventListener('change', updateToolSettings);
+        
+        function renderEditor() {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = '#1a202c';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#2d3748';
+            for (let i = 0; i < 20; i++) {
+                ctx.fillRect(i * 50, 0, 1, canvas.height);
+            }
+            for (let i = 0; i < 15; i++) {
+                ctx.fillRect(0, i * 50, canvas.width, 1);
+            }
+            
+            const decorEmojis = {
+                'sparkle': '✨',
+                'gem': '💎',
+                'star': '⭐',
+                'moon': '🌙',
+                'glitter': '✨'
+            };
+            
+            editorDecorations.forEach(d => {
+                ctx.font = '20px Arial';
+                const emoji = decorEmojis[d.type] || '✨';
+                ctx.fillText(emoji, d.x, d.y);
+            });
+            
+            editorSpikes.forEach(s => {
+                ctx.fillStyle = '#e53e3e';
+                ctx.beginPath();
+                const spikeWidth = s.width / 3;
+                for (let i = 0; i < 3; i++) {
+                    ctx.moveTo(s.x + i * spikeWidth, s.y + s.height);
+                    ctx.lineTo(s.x + i * spikeWidth + spikeWidth/2, s.y);
+                    ctx.lineTo(s.x + (i + 1) * spikeWidth, s.y + s.height);
+                }
+                ctx.fill();
+            });
+            
+            ctx.fillStyle = '#4a5568';
+            editorPlatforms.forEach(p => {
+                ctx.fillRect(p.x, p.y, p.width, p.height);
+                ctx.fillStyle = '#2d3748';
+                ctx.fillRect(p.x, p.y, p.width, 4);
+                ctx.fillStyle = '#4a5568';
+            });
+            
+            if (editorGoal) {
+                ctx.fillStyle = '#744210';
+                ctx.fillRect(editorGoal.x, editorGoal.y + 10, 6, editorGoal.height - 10);
+                ctx.fillStyle = '#f6e05e';
+                ctx.beginPath();
+                ctx.moveTo(editorGoal.x + 6, editorGoal.y + 10);
+                ctx.lineTo(editorGoal.x + editorGoal.width, editorGoal.y + 20);
+                ctx.lineTo(editorGoal.x + 6, editorGoal.y + 30);
+                ctx.fill();
+            }
+            
+            ctx.fillStyle = '#48bb78';
+            ctx.beginPath();
+            ctx.arc(editorPlayerStart.x, editorPlayerStart.y, 15, 0, Math.PI * 2);
+            ctx.fill();
+            
+            editorSpeedRings.forEach(h => {
+                ctx.strokeStyle = '#00ff88';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, h.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(0, 255, 136, 0.3)';
+                ctx.fill();
+            });
+            
+            editorJumpRings.forEach(h => {
+                ctx.strokeStyle = '#ffdd00';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, h.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(255, 221, 0, 0.3)';
+                ctx.fill();
+            });
+            
+            editorGravityRings.forEach(h => {
+                ctx.strokeStyle = '#9f7aea';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, h.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(159, 122, 234, 0.3)';
+                ctx.fill();
+            });
+            
+            editorInvisiblePlatforms.forEach(p => {
+                ctx.strokeStyle = '#718096';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 5]);
+                ctx.strokeRect(p.x, p.y, p.width, p.height);
+                ctx.setLineDash([]);
+                ctx.fillStyle = 'rgba(113, 128, 150, 0.2)';
+                ctx.fill();
+            });
+            
+            editorCrumblingPlatforms.forEach(p => {
+                ctx.fillStyle = '#ed8936';
+                ctx.fillRect(p.x, p.y, p.width, p.height);
+                ctx.fillStyle = '#dd6b20';
+                ctx.fillRect(p.x, p.y, p.width, 4);
+            });
+            
+            editorDashPads.forEach(p => {
+                ctx.fillStyle = '#38b2ac';
+                ctx.fillRect(p.x, p.y + p.height - 4, p.width, 4);
+                ctx.fillStyle = 'rgba(56, 178, 172, 0.5)';
+                ctx.fillRect(p.x, p.y, p.width, p.height - 4);
+            });
+            
+            editorMovingSpikes.forEach(s => {
+                ctx.fillStyle = '#e53e3e';
+                ctx.beginPath();
+                const spikeWidth = s.width / 3;
+                for (let i = 0; i < 3; i++) {
+                    ctx.moveTo(s.x + i * spikeWidth, s.y + s.height);
+                    ctx.lineTo(s.x + i * spikeWidth + spikeWidth/2, s.y);
+                    ctx.lineTo(s.x + (i + 1) * spikeWidth, s.y + s.height);
+                }
+                ctx.fill();
+            });
+            
+            editorSwingingAxes.forEach(a => {
+                ctx.strokeStyle = '#718096';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(a.x, a.y);
+                ctx.lineTo(a.x, a.y + a.length);
+                ctx.stroke();
+                ctx.fillStyle = '#4a5568';
+                ctx.beginPath();
+                ctx.arc(a.x, a.y + a.length, 15, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            
+            editorLasers.forEach(l => {
+                ctx.fillStyle = '#f56565';
+                ctx.fillRect(l.x, l.y, l.width, l.height);
+                ctx.fillStyle = 'rgba(245, 101, 101, 0.3)';
+                ctx.fillRect(l.x - 2, l.y - 2, l.width + 4, l.height + 4);
+            });
+            
+            editorShields.forEach(s => {
+                ctx.strokeStyle = '#4299e1';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(66, 153, 225, 0.3)';
+                ctx.fill();
+            });
+            
+            editorMagnets.forEach(m => {
+                ctx.strokeStyle = '#ed64a6';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(m.x, m.y, m.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(237, 100, 166, 0.2)';
+                ctx.fill();
+                ctx.fillStyle = '#ed64a6';
+                ctx.font = '16px Arial';
+                ctx.fillText('N', m.x - 4, m.y + 5);
+                ctx.fillText('S', m.x + 8, m.y + 5);
+            });
+            
+            editorCoins.forEach(c => {
+                ctx.fillStyle = '#ecc94b';
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, c.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#d69e2e';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+            
+            editorKeys.forEach(k => {
+                ctx.fillStyle = '#ecc94b';
+                ctx.fillRect(k.x + 6, k.y, 8, 20);
+                ctx.beginPath();
+                ctx.arc(k.x + 10, k.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillRect(k.x + 6, k.y + 15, 10, 4);
+                ctx.fillRect(k.x + 6, k.y + 22, 8, 4);
+            });
+            
+            editorSlowMotionZones.forEach(z => {
+                ctx.fillStyle = 'rgba(66, 153, 225, 0.2)';
+                ctx.fillRect(z.x, z.y, z.width, z.height);
+                ctx.strokeStyle = '#4299e1';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.strokeRect(z.x, z.y, z.width, z.height);
+                ctx.setLineDash([]);
+                ctx.fillStyle = '#4299e1';
+                ctx.font = '10px Arial';
+                ctx.fillText('SLOW', z.x + 5, z.y + 15);
+            });
+            
+            editorColorCubes.forEach(c => {
+                ctx.fillStyle = c.color || '#ff6b6b';
+                ctx.fillRect(c.x, c.y, c.size, c.size);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(c.x, c.y, c.size, c.size);
+            });
+            
+            if (!testMode) {
+                canvas.onclick = function(e) {
+                    handleEditorClick(e);
+                };
+            }
+        }
+        
+        function handleEditorClick(e) {
+            console.log("Editor click detected, tool:", currentTool);
+            const canvas = document.getElementById('gameCanvas');
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            if (currentTool === 'delete') {
+                editorPlatforms = editorPlatforms.filter(p => 
+                    !(x >= p.x && x <= p.x + p.width && y >= p.y && y <= p.y + p.height));
+                editorSpikes = editorSpikes.filter(s => 
+                    !(x >= s.x && x <= s.x + s.width && y >= s.y && y <= s.y + s.height));
+                if (editorGoal && x >= editorGoal.x && x <= editorGoal.x + editorGoal.width && 
+                    y >= editorGoal.y && y <= editorGoal.y + editorGoal.height) {
+                    editorGoal = null;
+                }
+                editorDecorations = editorDecorations.filter(d => 
+                    Math.abs(x - d.x) < 20 && Math.abs(y - d.y) < 20);
+                editorSpeedRings = editorSpeedRings.filter(h => Math.hypot(x - h.x, y - h.y) > h.radius);
+                editorJumpRings = editorJumpRings.filter(h => Math.hypot(x - h.x, y - h.y) > h.radius);
+                editorGravityRings = editorGravityRings.filter(h => Math.hypot(x - h.x, y - h.y) > h.radius);
+                editorInvisiblePlatforms = editorInvisiblePlatforms.filter(p => 
+                    !(x >= p.x && x <= p.x + p.width && y >= p.y && y <= p.y + p.height));
+                editorCrumblingPlatforms = editorCrumblingPlatforms.filter(p => 
+                    !(x >= p.x && x <= p.x + p.width && y >= p.y && y <= p.y + p.height));
+                editorDashPads = editorDashPads.filter(p => 
+                    !(x >= p.x && x <= p.x + p.width && y >= p.y && y <= p.y + p.height));
+                editorMovingSpikes = editorMovingSpikes.filter(s => 
+                    !(x >= s.x && x <= s.x + s.width && y >= s.y && y <= s.y + s.height));
+                editorSwingingAxes = editorSwingingAxes.filter(a => 
+                    Math.abs(x - a.x) < 30 && Math.abs(y - (a.y - a.length/2)) < a.length);
+                editorLasers = editorLasers.filter(l => 
+                    !(x >= l.x && x <= l.x + l.width && y >= l.y && y <= l.y + l.height));
+                editorShields = editorShields.filter(s => Math.hypot(x - s.x, y - s.y) > s.radius);
+                editorMagnets = editorMagnets.filter(m => Math.hypot(x - m.x, y - m.y) > m.radius);
+                editorCoins = editorCoins.filter(c => Math.hypot(x - c.x, y - c.y) > c.radius);
+                editorKeys = editorKeys.filter(k => 
+                    !(x >= k.x && x <= k.x + k.width && y >= k.y && y <= k.y + k.height));
+                editorSlowMotionZones = editorSlowMotionZones.filter(z => 
+                    !(x >= z.x && x <= z.x + z.width && y >= z.y && y <= z.y + z.height));
+                editorColorCubes = editorColorCubes.filter(c => 
+                    !(x >= c.x && x <= c.x + c.size && y >= c.y && y <= c.y + c.size));
+            } else if (currentTool === 'platform') {
+                const width = parseInt(document.getElementById('platWidth').value);
+                const height = parseInt(document.getElementById('platHeight').value);
+                const moving = document.getElementById('platMoving').checked;
+                const speed = moving ? parseInt(document.getElementById('platSpeed').value) : 0;
+                const range = moving ? parseInt(document.getElementById('platRange').value) : 0;
+                const vertical = document.getElementById('platVertical').checked;
+                
+                editorPlatforms.push({
+                    x: x - width/2,
+                    y: y - height/2,
+                    width: width,
+                    height: height,
+                    moving: moving,
+                    speed: speed,
+                    range: range,
+                    vertical: vertical
+                });
+            } else if (currentTool === 'spike') {
+                const spikeWidth = parseInt(document.getElementById('spikeWidth').value);
+                editorSpikes.push({ x: x - spikeWidth/2, y: y - 10, width: spikeWidth });
+            } else if (currentTool === 'goal') {
+                editorGoal = { x: x - 20, y: y - 30, width: 40, height: 60 };
+            } else if (currentTool === 'player') {
+                editorPlayerStart = { x: x, y: y };
+            } else if (currentTool === 'decor') {
+                const decorType = document.getElementById('decorType').value;
+                editorDecorations.push({ x: x, y: y, type: decorType });
+            } else if (currentTool === 'speedRing') {
+                editorSpeedRings.push({ x: x, y: y, radius: 25, speedBoost: 2, duration: 120 });
+            } else if (currentTool === 'jumpRing') {
+                editorJumpRings.push({ x: x, y: y, radius: 22, jumpBoost: -28 });
+            } else if (currentTool === 'gravityRing') {
+                editorGravityRings.push({ x: x, y: y, radius: 24, gravityChange: -0.8 });
+            } else if (currentTool === 'invisiblePlatform') {
+                const platWidth = parseInt(document.getElementById('platWidth').value);
+                const platHeight = parseInt(document.getElementById('platHeight').value);
+                editorInvisiblePlatforms.push({ x: x - platWidth/2, y: y - platHeight/2, width: platWidth, height: platHeight });
+            } else if (currentTool === 'crumblingPlatform') {
+                const platWidth = parseInt(document.getElementById('platWidth').value);
+                const platHeight = parseInt(document.getElementById('platHeight').value);
+                editorCrumblingPlatforms.push({ x: x - platWidth/2, y: y - platHeight/2, width: platWidth, height: platHeight, delay: 30, fallSpeed: 3 });
+            } else if (currentTool === 'dashPad') {
+                editorDashPads.push({ x: x - 20, y: y - 5, width: 40, height: 10, dashForce: 18 });
+            } else if (currentTool === 'movingSpike') {
+                editorMovingSpikes.push({ x: x - 20, y: y - 15, width: 40, height: 30, speed: 3, range: 80 });
+            } else if (currentTool === 'swingingAxe') {
+                editorSwingingAxes.push({ x: x, y: y - 60, length: 60, swingSpeed: 0.05 });
+            } else if (currentTool === 'laser') {
+                editorLasers.push({ x: x - 5, y: y - 30, width: 10, height: 60, direction: 'horizontal' });
+            } else if (currentTool === 'shield') {
+                editorShields.push({ x: x, y: y, radius: 20 });
+            } else if (currentTool === 'magnet') {
+                editorMagnets.push({ x: x, y: y, radius: 30, strength: 150 });
+            } else if (currentTool === 'coin') {
+                editorCoins.push({ x: x, y: y, radius: 12 });
+            } else if (currentTool === 'key') {
+                editorKeys.push({ x: x - 10, y: y - 15, width: 20, height: 30 });
+            } else if (currentTool === 'slowMotionZone') {
+                editorSlowMotionZones.push({ x: x - 40, y: y - 30, width: 80, height: 60, factor: 0.3 });
+            } else if (currentTool === 'colorCube') {
+                editorColorCubes.push({ x: x - 15, y: y - 15, size: 30, color: '#ff6b6b' });
+            }
+            
+            renderEditor();
+        }
+        
+        function newLevel() {
+            editorPlatforms = [];
+            editorSpikes = [];
+            editorGoal = null;
+            editorDecorations = [];
+            editorPlayerStart = { x: 50, y: 500 };
+            editorSpeedRings = [];
+            editorJumpRings = [];
+            editorGravityRings = [];
+            editorInvisiblePlatforms = [];
+            editorCrumblingPlatforms = [];
+            editorDashPads = [];
+            editorMovingSpikes = [];
+            editorSwingingAxes = [];
+            editorLasers = [];
+            editorShields = [];
+            editorMagnets = [];
+            editorCoins = [];
+            editorKeys = [];
+            editorSlowMotionZones = [];
+            editorColorCubes = [];
+            window.customLevelBeaten = false;
+            customLevelBeaten = false;
+            renderEditor();
+        }
+        
+        window.newLevel = newLevel;
+        
+        function loadMyLevel() {
+            if (!window.savedCustomLevels || window.savedCustomLevels.length === 0) {
+                alert('No saved levels found! Create and publish a level first.');
+                return;
+            }
+            
+            let msg = 'Select a level to edit:\n';
+            window.savedCustomLevels.forEach((lvl, i) => {
+                msg += (i+1) + '. ' + (lvl.name || 'Level ' + (i+1)) + '\n';
+            });
+            msg += '\nEnter number:';
+            const choice = prompt(msg);
+            const idx = parseInt(choice) - 1;
+            
+            if (idx >= 0 && idx < window.savedCustomLevels.length) {
+                const lvl = window.savedCustomLevels[idx];
+                editorPlatforms = lvl.platforms.map(p => ({
+                    x: p.x, y: p.y, width: p.width, height: p.height,
+                    moving: p.moving || false, speed: p.speed || 0, range: p.range || 0, vertical: p.vertical || false
+                }));
+                editorSpikes = lvl.spikes.map(s => ({ x: s.x, y: s.y, width: s.width }));
+                editorGoal = lvl.goal;
+                editorPlayerStart = lvl.playerStart;
+                editorDecorations = lvl.decorations || [];
+                editorSpeedRings = lvl.speedRings || [];
+                editorJumpRings = lvl.jumpRings || [];
+                editorGravityRings = lvl.gravityRings || [];
+                editorInvisiblePlatforms = lvl.invisiblePlatforms || [];
+                editorCrumblingPlatforms = lvl.crumblingPlatforms || [];
+                editorDashPads = lvl.dashPads || [];
+                editorMovingSpikes = lvl.movingSpikes || [];
+                editorSwingingAxes = lvl.swingingAxes || [];
+                editorLasers = lvl.lasers || [];
+                editorShields = lvl.shields || [];
+                editorMagnets = lvl.magnets || [];
+                editorCoins = lvl.coins || [];
+                editorKeys = lvl.keys || [];
+                editorSlowMotionZones = lvl.slowMotionZones || [];
+                editorColorCubes = lvl.colorCubes || [];
+                renderEditor();
+            } else {
+                alert('Invalid selection!');
+            }
+        }
+        
+        function searchLevels() {
+            if (window.savedCustomLevels && window.savedCustomLevels.length > 0) {
+                let msg = '📂 Your Saved Levels:\n\n';
+                window.savedCustomLevels.forEach((lvl, i) => {
+                    msg += (i+1) + '. ' + (lvl.name || 'Level ' + (i+1)) + '\n';
+                    msg += '   Platforms: ' + lvl.platforms.length + ', Spikes: ' + lvl.spikes.length + '\n';
+                });
+                msg += '\nTotal: ' + window.savedCustomLevels.length + ' level(s)\n\nClick "Load" to edit!';
+                alert(msg);
+            } else {
+                alert('No levels found yet!\n\nCreate a level, beat it, and publish it to save it.');
+            }
+        }
+        
+        function clearLevel() {
+            if (window.savedCustomLevels && window.savedCustomLevels.length > 0) {
+                const choice = confirm('Clear current editor?\n\nOK = Clear editor\nCancel = Delete saved level');
+                if (choice) {
+                    newLevel();
+                } else {
+                    let msg = 'Enter level number to DELETE:\n';
+                    window.savedCustomLevels.forEach((lvl, i) => {
+                        msg += (i+1) + '. ' + (lvl.name || 'Level ' + (i+1)) + '\n';
+                    });
+                    const num = prompt(msg);
+                    const idx = parseInt(num) - 1;
+                    if (idx >= 0 && idx < window.savedCustomLevels.length) {
+                        const deleted = window.savedCustomLevels.splice(idx, 1)[0];
+                        storage.setItem('platformerCustomLevels', JSON.stringify(window.savedCustomLevels));
+                        alert('Deleted: ' + (deleted.name || 'Level'));
+                    }
+                }
+            } else {
+                newLevel();
+            }
+        }
+        
+        function testLevel() {
+            if (!editorGoal) {
+                alert('Please place a goal first!');
+                return;
+            }
+            if (editorPlatforms.length === 0) {
+                alert('Please add some platforms first!');
+                return;
+            }
+            
+            window.customLevelBeaten = false;
+            customLevelBeaten = false;
+            testMode = true;
+            
+            // Close the panel and keep game paused until level is loaded
+            document.getElementById('levelMakerPanel').style.display = 'none';
+            levelMakerOpen = false;
+            
+            const customLevel = {
+                name: document.getElementById('levelNameInput').value || "Custom Level",
+                playerStart: editorPlayerStart,
+                platforms: editorPlatforms.map(p => ({
+                    x: p.x, y: p.y, width: p.width, height: p.height,
+                    moving: p.moving, speed: p.speed, range: p.range, vertical: p.vertical
+                })),
+                spikes: editorSpikes.map(s => ({ x: s.x, y: s.y, width: s.width })),
+                decorations: editorDecorations.map(d => ({ x: d.x, y: d.y, type: d.type || 'sparkle' })),
+                goal: { x: editorGoal.x, y: editorGoal.y },
+                speedRings: editorSpeedRings.map(h => ({ x: h.x, y: h.y, radius: h.radius, speedBoost: h.speedBoost, duration: h.duration })),
+                jumpRings: editorJumpRings.map(h => ({ x: h.x, y: h.y, radius: h.radius, jumpBoost: h.jumpBoost })),
+                gravityRings: editorGravityRings.map(h => ({ x: h.x, y: h.y, radius: h.radius, gravityChange: h.gravityChange })),
+                invisiblePlatforms: editorInvisiblePlatforms.map(p => ({ x: p.x, y: p.y, width: p.width, height: p.height })),
+                crumblingPlatforms: editorCrumblingPlatforms.map(p => ({ x: p.x, y: p.y, width: p.width, height: p.height, delay: p.delay, fallSpeed: p.fallSpeed })),
+                dashPads: editorDashPads.map(p => ({ x: p.x, y: p.y, width: p.width, height: p.height, dashForce: p.dashForce })),
+                movingSpikes: editorMovingSpikes.map(s => ({ x: s.x, y: s.y, width: s.width, height: s.height, speed: s.speed, range: s.range })),
+                swingingAxes: editorSwingingAxes.map(a => ({ x: a.x, y: a.y, length: a.length, swingSpeed: a.swingSpeed })),
+                lasers: editorLasers.map(l => ({ x: l.x, y: l.y, width: l.width, height: l.height, direction: l.direction })),
+                shields: editorShields.map(s => ({ x: s.x, y: s.y, radius: s.radius })),
+                magnets: editorMagnets.map(m => ({ x: m.x, y: m.y, radius: m.radius, strength: m.strength })),
+                coins: editorCoins.map(c => ({ x: c.x, y: c.y, radius: c.radius })),
+                keys: editorKeys.map(k => ({ x: k.x, y: k.y, width: k.width, height: k.height })),
+                slowMotionZones: editorSlowMotionZones.map(z => ({ x: z.x, y: z.y, width: z.width, height: z.height, factor: z.factor })),
+                colorCubes: editorColorCubes.map(c => ({ x: c.x, y: c.y, size: c.size, color: c.color }))
+            };
+            
+            window.testCustomLevel = customLevel;
+            gamePausedForEditor = false;
+            
+            if (window.game) {
+                window.game.loadCustomLevel(customLevel, true);
+                window.game.resume();
+            }
+        }
+        
+        function saveLevel() {
+            if (!editorGoal) {
+                alert('Please place a goal first!');
+                return;
+            }
+            if (editorPlatforms.length === 0) {
+                alert('Please add some platforms first!');
+                return;
+            }
+            
+            const levelBeaten = window.customLevelBeaten === true;
+            if (!levelBeaten) {
+                alert('You must beat your level first to publish it! Click "Test Level" and reach the goal.');
+                return;
+            }
+            
+            savedCustomLevel = {
+                name: document.getElementById('levelNameInput').value || "My Custom Level",
+                playerStart: editorPlayerStart,
+                platforms: editorPlatforms.map(p => ({
+                    x: p.x, y: p.y, width: p.width, height: p.height,
+                    moving: p.moving, speed: p.speed, range: p.range, vertical: p.vertical
+                })),
+                spikes: editorSpikes.map(s => ({ x: s.x, y: s.y, width: s.width })),
+                decorations: editorDecorations.map(d => ({ x: d.x, y: d.y, type: d.type || 'sparkle' })),
+                goal: { x: editorGoal.x, y: editorGoal.y },
+                speedRings: editorSpeedRings.map(h => ({ x: h.x, y: h.y, radius: h.radius, speedBoost: h.speedBoost, duration: h.duration })),
+                jumpRings: editorJumpRings.map(h => ({ x: h.x, y: h.y, radius: h.radius, jumpBoost: h.jumpBoost })),
+                gravityRings: editorGravityRings.map(h => ({ x: h.x, y: h.y, radius: h.radius, gravityChange: h.gravityChange })),
+                invisiblePlatforms: editorInvisiblePlatforms.map(p => ({ x: p.x, y: p.y, width: p.width, height: p.height })),
+                crumblingPlatforms: editorCrumblingPlatforms.map(p => ({ x: p.x, y: p.y, width: p.width, height: p.height, delay: p.delay, fallSpeed: p.fallSpeed })),
+                dashPads: editorDashPads.map(p => ({ x: p.x, y: p.y, width: p.width, height: p.height, dashForce: p.dashForce })),
+                movingSpikes: editorMovingSpikes.map(s => ({ x: s.x, y: s.y, width: s.width, height: s.height, speed: s.speed, range: s.range })),
+                swingingAxes: editorSwingingAxes.map(a => ({ x: a.x, y: a.y, length: a.length, swingSpeed: a.swingSpeed })),
+                lasers: editorLasers.map(l => ({ x: l.x, y: l.y, width: l.width, height: l.height, direction: l.direction })),
+                shields: editorShields.map(s => ({ x: s.x, y: s.y, radius: s.radius })),
+                magnets: editorMagnets.map(m => ({ x: m.x, y: m.y, radius: m.radius, strength: m.strength })),
+                coins: editorCoins.map(c => ({ x: c.x, y: c.y, radius: c.radius })),
+                keys: editorKeys.map(k => ({ x: k.x, y: k.y, width: k.width, height: k.height })),
+                slowMotionZones: editorSlowMotionZones.map(z => ({ x: z.x, y: z.y, width: z.width, height: z.height, factor: z.factor })),
+                colorCubes: editorColorCubes.map(c => ({ x: c.x, y: c.y, size: c.size, color: c.color }))
+            };
+            
+            // Add to levels array
+            if (!window.savedCustomLevels) {
+                window.savedCustomLevels = [];
+            }
+            window.savedCustomLevels.push(savedCustomLevel);
+            
+            // Persist to localStorage
+            storage.setItem('platformerCustomLevels', JSON.stringify(window.savedCustomLevels));
+            
+            alert('Level saved! You now have ' + window.savedCustomLevels.length + ' custom level(s)!');
+        }
+        
+        // Share/Import Level Functions
+        function shareLevel() {
+            if (!window.savedCustomLevels || window.savedCustomLevels.length === 0) {
+                alert('No levels to share! Create and save a level first.');
+                return;
+            }
+            
+            let msg = 'Enter level number to share:\n';
+            window.savedCustomLevels.forEach((lvl, i) => {
+                msg += (i+1) + '. ' + (lvl.name || 'Level ' + (i+1)) + '\n';
+            });
+            const num = prompt(msg);
+            const idx = parseInt(num) - 1;
+            
+            if (idx >= 0 && idx < window.savedCustomLevels.length) {
+                const lvl = window.savedCustomLevels[idx];
+                try {
+                    const jsonStr = JSON.stringify(lvl);
+                    const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
+                    prompt('Copy this code to share your level:', encoded);
+                } catch(e) {
+                    alert('Error creating share code!');
+                }
+            }
+        }
+        
+        function importLevel() {
+            const code = prompt('Paste a level code to import:');
+            if (!code) return;
+            
+            try {
+                const jsonStr = decodeURIComponent(escape(atob(code)));
+                const lvl = JSON.parse(jsonStr);
+                
+                if (lvl.name && lvl.platforms && lvl.goal) {
+                    if (!window.savedCustomLevels) {
+                        window.savedCustomLevels = [];
+                    }
+                    window.savedCustomLevels.push(lvl);
+                    storage.setItem('platformerCustomLevels', JSON.stringify(window.savedCustomLevels));
+                    alert('Level "' + (lvl.name || 'Imported') + '" imported successfully!');
+                } else {
+                    alert('Invalid level code!');
+                }
+            } catch(e) {
+                alert('Invalid level code! Error: ' + e.message);
+            }
+        }
+        
+        updateGemDisplay();
+        updateCoinDisplay();
+        
+        // Login/Register System
+        let currentUser = null;
+        
+        function loadUser() {
+            const savedUser = storage.getItem('platformerUser');
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+                updateLoginButton();
+            }
+        }
+        
+        function updateLoginButton() {
+            const btn = document.getElementById('loginBtn');
+            if (currentUser) {
+                btn.textContent = '👤 ' + currentUser.username;
+            } else {
+                btn.textContent = '👤 Login';
+            }
+        }
+        
+        function openLogin() {
+            document.getElementById('loginModal').style.display = 'block';
+            showLoginTab();
+        }
+        
+        function closeLogin() {
+            document.getElementById('loginModal').style.display = 'none';
+        }
+        
+        function showLoginTab() {
+            document.getElementById('loginTab').classList.add('active');
+            document.getElementById('registerTab').classList.remove('active');
+            document.getElementById('loginFormContainer').style.display = 'block';
+            document.getElementById('registerFormContainer').style.display = 'none';
+            document.getElementById('loginError').style.display = 'none';
+        }
+        
+        function showRegisterTab() {
+            document.getElementById('loginTab').classList.remove('active');
+            document.getElementById('registerTab').classList.add('active');
+            document.getElementById('loginFormContainer').style.display = 'none';
+            document.getElementById('registerFormContainer').style.display = 'block';
+            document.getElementById('registerError').style.display = 'none';
+        }
+        
+        function doLogin() {
+            const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+            const password = document.getElementById('loginPassword').value;
+            const errorEl = document.getElementById('loginError');
+            
+            if (!email || !password) {
+                errorEl.textContent = 'Please enter email and password';
+                errorEl.style.display = 'block';
+                return;
+            }
+            
+            const users = JSON.parse(storage.getItem('platformerUsers') || '[]');
+            const user = users.find(u => u.email === email && u.password === password);
+            
+            if (user) {
+                currentUser = {
+                    username: user.username,
+                    email: user.email,
+                    gems: user.gems || 0,
+                    ownedSkins: user.ownedSkins || ['default'],
+                    currentSkin: user.currentSkin || 'default',
+                    ownedHats: user.ownedHats || [],
+                    currentHat: user.currentHat || 'none',
+                    usedCodes: user.usedCodes || [],
+                    secretRoomUnlocked: user.secretRoomUnlocked || false,
+                    canDash: user.canDash || false,
+                    levelsCompleted: user.levelsCompleted || []
+                };
+                
+                // Sync with game data
+                playerGems = currentUser.gems;
+                playerCoins = currentUser.coins || 0;
+                ownedSkins = currentUser.ownedSkins;
+                currentSkin = currentUser.currentSkin;
+                ownedHats = currentUser.ownedHats;
+                currentHat = currentUser.currentHat;
+                usedCodes = currentUser.usedCodes;
+                secretRoomUnlocked = currentUser.secretRoomUnlocked;
+                canDash = currentUser.canDash;
+                
+                storage.setItem('platformerUser', JSON.stringify(currentUser));
+                updateGemDisplay();
+                updateCoinDisplay();
+                updateLoginButton();
+                closeLogin();
+                alert('Welcome back, ' + currentUser.username + '!');
+            } else {
+                errorEl.textContent = 'Invalid email or password';
+                errorEl.style.display = 'block';
+            }
+        }
+        
+        function doRegister() {
+            const username = document.getElementById('regUsername').value.trim();
+            const email = document.getElementById('regEmail').value.trim().toLowerCase();
+            const password = document.getElementById('regPassword').value;
+            const confirmPassword = document.getElementById('regConfirmPassword').value;
+            const errorEl = document.getElementById('registerError');
+            
+            if (!username || !email || !password || !confirmPassword) {
+                errorEl.textContent = 'Please fill in all fields';
+                errorEl.style.display = 'block';
+                return;
+            }
+            
+            if (username.length < 2) {
+                errorEl.textContent = 'Username must be at least 2 characters';
+                errorEl.style.display = 'block';
+                return;
+            }
+            
+            if (username.length > 20) {
+                errorEl.textContent = 'Username must be 20 characters or less';
+                errorEl.style.display = 'block';
+                return;
+            }
+            
+            if (password.length < 4) {
+                errorEl.textContent = 'Password must be at least 4 characters';
+                errorEl.style.display = 'block';
+                return;
+            }
+            
+            if (password !== confirmPassword) {
+                errorEl.textContent = 'Passwords do not match';
+                errorEl.style.display = 'block';
+                return;
+            }
+            
+            const users = JSON.parse(storage.getItem('platformerUsers') || '[]');
+            
+            if (users.find(u => u.email === email)) {
+                errorEl.textContent = 'An account with this email already exists';
+                errorEl.style.display = 'block';
+                return;
+            }
+            
+            if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
+                errorEl.textContent = 'This username is already taken';
+                errorEl.style.display = 'block';
+                return;
+            }
+            
+            const newUser = {
+                username: username,
+                email: email,
+                password: password,
+                gems: playerGems,
+                ownedSkins: ownedSkins,
+                currentSkin: currentSkin,
+                ownedHats: ownedHats,
+                currentHat: currentHat,
+                usedCodes: usedCodes,
+                secretRoomUnlocked: secretRoomUnlocked,
+                canDash: canDash,
+                levelsCompleted: []
+            };
+            
+            users.push(newUser);
+            storage.setItem('platformerUsers', JSON.stringify(users));
+            
+            currentUser = {
+                username: username,
+                email: email,
+                gems: playerGems,
+                ownedSkins: ownedSkins,
+                currentSkin: currentSkin,
+                ownedHats: ownedHats,
+                currentHat: currentHat,
+                usedCodes: usedCodes,
+                secretRoomUnlocked: secretRoomUnlocked,
+                canDash: canDash,
+                levelsCompleted: []
+            };
+            
+            storage.setItem('platformerUser', JSON.stringify(currentUser));
+            updateLoginButton();
+            closeLogin();
+            alert('Account created! Welcome, ' + username + '!');
+        }
+        
+        function logout() {
+            // Save current progress first
+            if (currentUser) {
+                saveUserProgress();
+            }
+            currentUser = null;
+                storage.removeItem('platformerUser');
+            updateLoginButton();
+            alert('You have been logged out.');
+        }
+        
+        function saveUserProgress() {
+            if (!currentUser) return;
+            
+            const users = JSON.parse(storage.getItem('platformerUsers') || '[]');
+            const userIndex = users.findIndex(u => u.email === currentUser.email);
+            
+            if (userIndex !== -1) {
+                users[userIndex].gems = playerGems;
+                users[userIndex].coins = playerCoins;
+                users[userIndex].ownedSkins = ownedSkins;
+                users[userIndex].currentSkin = currentSkin;
+                users[userIndex].ownedHats = ownedHats;
+                users[userIndex].currentHat = currentHat;
+                users[userIndex].usedCodes = usedCodes;
+                users[userIndex].secretRoomUnlocked = secretRoomUnlocked;
+                users[userIndex].canDash = canDash;
+                
+                storage.setItem('platformerUsers', JSON.stringify(users));
+            }
+        }
+        
+        document.getElementById('loginBtn').addEventListener('click', openLogin);
+        
+        document.getElementById('loginPassword').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') doLogin();
+        });
+        
+        document.getElementById('regPassword').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') doRegister();
+        });
+        
+        loadUser();
+    
