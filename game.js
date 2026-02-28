@@ -478,9 +478,10 @@ class Player {
         let gravityMod = this.slowMo ? 0.3 : 1;
         this.vy += GRAVITY * this.gravity * gravityMod;
         
-        // Apply velocity
-        this.x += this.vx;
-        this.y += this.vy;
+        // Apply velocity (scaled by deltaTime for consistent speed)
+        const timeScale = deltaTime / 16;
+        this.x += this.vx * timeScale;
+        this.y += this.vy * timeScale;
         
         if (this.x < 0) this.x = 0;
         if (this.x + this.width > CANVAS_WIDTH) this.x = CANVAS_WIDTH - this.width;
@@ -7072,6 +7073,7 @@ class Game {
         this.levelDisplay = document.getElementById('levelDisplay');
         this.doubleJumpDisplay = document.getElementById('doubleJumpDisplay');
         this.messageDiv = document.getElementById('message');
+        this.lastTime = null;
         
         this.input = new InputHandler();
         this.particles = new ParticleSystem();
@@ -7874,7 +7876,15 @@ class Game {
     }
     
     gameLoop() {
-        const deltaTime = 16;
+        const now = Date.now();
+        let deltaTime = 16;
+        if (this.lastTime) {
+            deltaTime = now - this.lastTime;
+            // Cap delta time to prevent huge jumps
+            if (deltaTime > 50) deltaTime = 50;
+            if (deltaTime < 8) deltaTime = 8;
+        }
+        this.lastTime = now;
         
         this.update(deltaTime);
         if (!this.paused) {
